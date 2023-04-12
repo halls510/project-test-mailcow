@@ -1,17 +1,53 @@
 version: '2.1'
 
 services:
+    nginx-mailcow:
+      networks:
+        # Add Traefik's network
+        web:
+      labels:
+        - traefik.enable=true
+        # Creates a router called "moo" for the container, and sets up a rule to link the container to certain rule,
+        #   in this case, a Host rule with our MAILCOW_HOSTNAME var.
+        - traefik.http.routers.moo.rule=Host(`${MAILCOW_HOSTNAME}`)
+        # Enables tls over the router we created before.
+        - traefik.http.routers.moo.tls=true
+        # Specifies which kind of cert resolver we'll use, in this case le (Lets Encrypt).
+        - traefik.http.routers.moo.tls.certresolver=le
+        # Creates a service called "moo" for the container, and specifies which internal port of the container
+        #   should traefik route the incoming data to.
+        - traefik.http.services.moo.loadbalancer.server.port=${HTTP_PORT}
+        # Specifies which entrypoint (external port) should traefik listen to, for this container.
+        #   websecure being port 443, check the traefik.toml file liked above.
+        - traefik.http.routers.moo.entrypoints=websecure
+        # Make sure traefik uses the web network, not the mailcowdockerized_mailcow-network
+        - traefik.docker.network=traefik_web
 
-  nginx-mailcow:
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.moo.rule=Host(`${MAILCOW_HOSTNAME}`)      
-      - traefik.http.routers.moo.tls.certresolver=myresolver       
-      - traefik.http.services.moo.loadbalancer.server.port=80        
-    networks:
-      - traefik      
-    
+    certdumper:
+        image: humenius/traefik-certs-dumper
+        command: --restart-containers ${COMPOSE_PROJECT_NAME}-postfix-mailcow-1,${COMPOSE_PROJECT_NAME}-nginx-mailcow-1,${COMPOSE_PROJECT_NAME}-dovecot-mailcow-1
+        network_mode: none
+        volumes:
+          # Mount the volume which contains Traefik's `acme.json' file
+          #   Configure the external name in the volume definition
+          - acme:/traefik:ro
+          # Mount mailcow's SSL folder
+          - ./data/assets/ssl/:/output:rw
+          # Mount docker socket to restart containers
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+        restart: always
+        environment:
+          # only change this, if you're using another domain for mailcow's web frontend compared to the standard config
+          - DOMAIN=${MAILCOW_HOSTNAME}
+
 networks:
-  traefik:
-    external:
-      name: traefik_network
+  web:
+    external: true
+    # Name of the external network
+    name: traefik_web
+
+volumes:
+  acme:
+    external: true
+    # Name of the external docker volume which contains Traefik's `acme.json' file
+    name: traefik_acme
