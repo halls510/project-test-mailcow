@@ -1,0 +1,28 @@
+version: '2.1'
+
+services:
+
+  nginx-mailcow:
+    networks:
+      # Add Traefik's network
+      web:
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.moo.rule=Host(`${MAILCOW_HOSTNAME}`)      
+      - traefik.http.routers.moo.tls=true        
+      - traefik.http.routers.moo.tls.certresolver=myresolver       
+      - traefik.http.services.moo.loadbalancer.server.port=${HTTP_PORT}        
+      - traefik.http.routers.moo.entrypoints=websecure        
+      - traefik.docker.network=traefik_web
+
+networks:
+  web:
+    external: true
+    # Name of the external network
+    name: traefik_web
+
+volumes:
+  acme:
+    external: true
+    # Name of the external docker volume which contains Traefik's `acme.json' file
+    name: traefik_acme
